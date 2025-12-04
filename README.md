@@ -25,7 +25,8 @@ We recommend using [uv](https://github.com/astral-sh/uv) for fast Python envs an
 1) Install uv (macOS Homebrew):
 
 ```bash
-brew install uv
+# On macOS and Linux.
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 2) Create a virtual environment and install deps:
