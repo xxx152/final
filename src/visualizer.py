@@ -59,7 +59,7 @@ class Visualizer:
         elif self.speed_mode == 2: self.clock.tick(30)
         elif self.speed_mode == 3: self.clock.tick(120)
 
-    def draw(self, world, phase_text, info_text, extra_info=""):
+    def draw(self, world, phase_text, info_text, extra_info="", client_delay=None):
         if self.headless or self.speed_mode == 0:
             return
 
@@ -89,15 +89,25 @@ class Visualizer:
             f"Phase: {phase_text} (Fixed RL)",
             f"Speed: [1]Slow [2]Norm [3]Fast [4]Max [0]Skip",
             info_text,
-            extra_info,
         ]
+        # Split extra_info by newlines to support multi-line display
+        if extra_info:
+            lines.extend(extra_info.split('\n'))
+        
         y = 10
         for line in lines:
-            s = self.font.render(line, True, (200, 200, 200))
-            self.screen.blit(s, (10, y))
-            y += 25
+            if line:  # Skip empty lines
+                s = self.font.render(line, True, (200, 200, 200))
+                self.screen.blit(s, (10, y))
+                y += 25
 
-        latency_ms = (RTT_FRAMES / FPS) * 1000
+        # Calculate latency from RTT_FRAMES (use client_delay override if match status affects it)
+        # If client_delay is 0 (prediction matched), show 0; otherwise use RTT_FRAMES
+        if client_delay == 0:
+            latency_ms = 0
+        else:
+            delay_frames = RTT_FRAMES if client_delay is None else client_delay
+            latency_ms = (delay_frames * 2 / FPS) * 1000  # RTT = 2 * one-way delay
         lat_text = self.big_font.render(f"Latency: {int(latency_ms)} ms", True, (255, 50, 50))
         self.screen.blit(lat_text, (SCREEN_W_BASE - 200, 10))
 

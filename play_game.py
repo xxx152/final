@@ -30,6 +30,8 @@ from src.constants import (
     MOVE_COOLDOWN,
     ACTION_HISTORY,
     PARAM_DIR,
+    FPS,
+    RTT_FRAMES,
 )
 
 
@@ -46,7 +48,10 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
     state_hist = [encode_state(world, []) for _ in range(SEQ_LEN)]
     past_actions = []
 
-    CLIENT_DELAY = 7  # mimic half RTT (can adjust)
+    # Use RTT_FRAMES from constants for network delay simulation
+    import time
+    CLIENT_DELAY = RTT_FRAMES // 2  # Half of RTT is one-way delay
+    
     delayed_user_actions = []
     server_pred_buffer = []
 
@@ -55,11 +60,25 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
     correct_preds = 0
     input_cooldown = 0
 
-    viz.speed_mode = 3 if not viz.headless else 0
+    viz.speed_mode = 2 if not viz.headless else 0  # Start from SLOW
+
+    # FPS tracking
+    fps_timer = time.perf_counter()
+    fps_counter = 0
+    current_fps = 0.0
 
     running = True
     while running:
         frame += 1
+        fps_counter += 1
+        
+        # Update FPS every second
+        now = time.perf_counter()
+        if now - fps_timer >= 1.0:
+            current_fps = fps_counter / (now - fps_timer)
+            fps_counter = 0
+            fps_timer = now
+        
         viz.handle_speed_input()
 
         if not viz.headless:
@@ -153,13 +172,13 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
             world.cx, world.cy = world.ax, world.ay
 
         acc = (correct_preds / total_preds * 100) if total_preds else 0.0
-        info = f"Acc={acc:.1f}% Frame={frame}"
-        legend = "Legend: Green=Server (authoritative), Blue=Client (predicted/applied)"
-        extra = f"Top2={top2} Match={match} Score={world.score} | {legend}"
-        viz.draw(world, "Play (Human + LSTM Predict)", info, extra)
+        info = f"Acc={acc:.1f}% FPS={current_fps:.1f}"
+        extra = f"Top2={top2}\nMatch={match}\nScore={world.score}\nLegend: Green=Server (authoritative), Blue=Client (predicted/applied)"
+        # Show zero latency when prediction matches (client-side prediction success)
+        effective_delay = 0 if match else CLIENT_DELAY
+        viz.draw(world, "Play (Human + LSTM Predict)", info, extra, client_delay=effective_delay)
         if viz.speed_mode != 4 and not viz.headless:
             viz.wait_frame()
-
     print("Session ended. Final accuracy: %.2f%%" % acc)
 
 

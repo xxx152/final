@@ -38,7 +38,7 @@ def train_rl_agent(viz):
     # Early stopping: stop if no improvement for this many consecutive episodes
     best_score = -float('inf')
     no_improve_epochs = 0
-    EARLY_STOP_PATIENCE = 3
+    EARLY_STOP_PATIENCE = 6
 
     # Warm-up
     print("Warm-up replay buffer...")
