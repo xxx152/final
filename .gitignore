@@ -31,7 +31,6 @@ dist/
 .DS_Store
 
 # Param artifacts (keep metadata JSON)
-param/*.pth
 param/*.pt
 param/*.ckpt
 # keep meta JSON

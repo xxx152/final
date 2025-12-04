@@ -63,6 +63,10 @@ Notes:
 - macOS pygame tip: if window creation fails, try `--headless` or ensure a graphical session (no SSH-only).
 - Torch install varies by CUDA availability. The `torch` entry in `requirements.txt` installs CPU build via PyPI by default. For GPU, install a matching wheel separately.
 
+## Configuration
+
+Default training parameters (episodes, steps, learning rate, etc.) are defined in `src/constants.py`. You can edit this file to tune the training process.
+
 ## Saved artifacts
 
 - RL model: `param/rl_net_<timestamp>.pth`
