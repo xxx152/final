@@ -35,6 +35,10 @@ def train_rl_agent(viz):
 
     score_history = []
     steps_done = 0
+    # Early stopping: stop if no improvement for this many consecutive episodes
+    best_score = -float('inf')
+    no_improve_epochs = 0
+    EARLY_STOP_PATIENCE = 4
 
     # Warm-up
     print("Warm-up replay buffer...")
@@ -105,8 +109,21 @@ def train_rl_agent(viz):
                     viz.wait_frame()
 
         score_history.append(world.score)
+        # Early-stop check: if no improvement for EARLY_STOP_PATIENCE consecutive episodes, break
+        if world.score > best_score:
+            best_score = world.score
+            no_improve_epochs = 0
+        else:
+            no_improve_epochs += 1
+
+        if no_improve_epochs >= EARLY_STOP_PATIENCE:
+            print(f"No improvement for {no_improve_epochs} episodes, stopping early at episode {ep+1}.")
+            break
+
         if (ep + 1) % 50 == 0:
             print(f"Ep {ep+1} Score: {world.score}  Avg50: {np.mean(score_history[-50:]):.1f}")
+
+        
 
     return q_net
 
