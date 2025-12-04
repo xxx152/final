@@ -1,0 +1,184 @@
+"""Interactive play script using trained LSTM predictions.
+
+Player controls the avatar with arrow keys. The LSTM model (loaded from
+file) predicts next action probabilities based on recent encoded states.
+Top-2 predicted actions are shown; accuracy tracking is displayed when
+the player's action matches one of the top predictions.
+
+Usage:
+  python play_game.py --lstm lstm_net_1700000000.pth --meta training_meta_1700000000.json
+  python play_game.py --meta training_meta_1700000000.json
+
+If --meta is supplied and --lstm omitted, it auto-loads the lstm path in metadata.
+"""
+
+import argparse
+import json
+import os
+import numpy as np
+import torch
+import pygame
+
+from src.visualizer import Visualizer
+from src.world import GridWorld, encode_state
+from src.models import LSTMPredictor
+from src.constants import (
+    INPUT_DIM,
+    SEQ_LEN,
+    DEVICE,
+    NOOP,
+    MOVE_COOLDOWN,
+    ACTION_HISTORY,
+    PARAM_DIR,
+)
+
+
+def load_lstm(path: str):
+    model = LSTMPredictor(INPUT_DIM).to(DEVICE)
+    state = torch.load(path, map_location=DEVICE)
+    model.load_state_dict(state)
+    model.eval()
+    return model
+
+
+def run(viz: Visualizer, lstm_model: LSTMPredictor):
+    world = GridWorld().reset()
+    state_hist = [encode_state(world, []) for _ in range(SEQ_LEN)]
+    past_actions = []
+
+    CLIENT_DELAY = 7  # mimic half RTT (can adjust)
+    delayed_user_actions = []
+    server_pred_buffer = []
+
+    frame = 0
+    total_preds = 0
+    correct_preds = 0
+    input_cooldown = 0
+
+    viz.speed_mode = 3 if not viz.headless else 0
+
+    running = True
+    while running:
+        frame += 1
+        viz.handle_speed_input()
+
+        if not viz.headless:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+        # Keyboard input
+        ua = None
+        if not viz.headless:
+            keys = pygame.key.get_pressed()
+            if input_cooldown <= 0:
+                if keys[pygame.K_UP]: ua = 0
+                elif keys[pygame.K_DOWN]: ua = 1
+                elif keys[pygame.K_LEFT]: ua = 2
+                elif keys[pygame.K_RIGHT]: ua = 3
+                if ua is not None:
+                    input_cooldown = MOVE_COOLDOWN
+            else:
+                input_cooldown -= 1
+
+        curr_act = ua if ua is not None else NOOP
+        past_actions.append(curr_act)
+        if len(past_actions) > ACTION_HISTORY:
+            past_actions.pop(0)
+        delayed_user_actions.append([CLIENT_DELAY, curr_act])
+
+        # Apply latest arrived server prediction (for accuracy stats only)
+        for item in server_pred_buffer:
+            item[0] -= 1
+        arrived_preds = [p for p in server_pred_buffer if p[0] <= 0]
+        server_pred_buffer = [p for p in server_pred_buffer if p[0] > 0]
+        latest_pred = arrived_preds[-1] if arrived_preds else None
+
+        match = False
+        if latest_pred and curr_act != NOOP:
+            total_preds += 1
+            if curr_act in latest_pred[1]:
+                correct_preds += 1
+                match = True
+
+        # Client applies immediate movement
+        if curr_act != NOOP:
+            world.client_apply(curr_act)
+
+        # Server applies delayed user actions
+        for item in delayed_user_actions:
+            item[0] -= 1
+        arrived_actions = [a for a in delayed_user_actions if a[0] <= 0]
+        delayed_user_actions = [a for a in delayed_user_actions if a[0] > 0]
+        if arrived_actions:
+            act = arrived_actions[-1][1]
+            if act != NOOP:
+                world.step(act)
+
+        # Encode and predict next action probabilities
+        curr_enc = encode_state(world, past_actions)
+        state_hist.append(curr_enc)
+        if len(state_hist) > 400:
+            state_hist.pop(0)
+
+        seq = torch.tensor([state_hist[-SEQ_LEN:]], dtype=torch.float32).to(DEVICE)
+        with torch.no_grad():
+            probs = torch.softmax(lstm_model(seq), dim=1)[0].cpu().numpy()
+        top2 = probs.argsort()[-2:][::-1].tolist()
+        server_pred_buffer.append([CLIENT_DELAY, top2])
+
+        # Periodically re-sync client avatar to authoritative server pos
+        if frame % 300 == 0:
+            world.cx, world.cy = world.ax, world.ay
+
+        acc = (correct_preds / total_preds * 100) if total_preds else 0.0
+        info = f"Acc={acc:.1f}% Frame={frame}"
+        extra = f"Top2={top2} Match={match} Score={world.score}"
+        viz.draw(world, "Play (Human + LSTM Predict)", info, extra)
+        if viz.speed_mode != 4 and not viz.headless:
+            viz.wait_frame()
+
+    print("Session ended. Final accuracy: %.2f%%" % acc)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Play interactively with LSTM predictions.")
+    parser.add_argument("--meta", type=str, default=None, help="Metadata JSON (auto-lstm path). If omitted, latest meta in param/ will be used if present.")
+    parser.add_argument("--lstm", type=str, default=None, help="Path to lstm model .pth")
+    parser.add_argument("--headless", action="store_true", help="Force headless (no window).")
+    args = parser.parse_args()
+
+    lstm_path = args.lstm
+    # If meta provided, use it; else try latest in PARAM_DIR
+    meta_path = None
+    if args.meta and os.path.isfile(args.meta):
+        meta_path = args.meta
+    else:
+        try:
+            metas = [f for f in os.listdir(PARAM_DIR) if f.startswith("training_meta_") and f.endswith(".json")]
+            if metas:
+                metas.sort(reverse=True)
+                meta_path = os.path.join(PARAM_DIR, metas[0])
+        except FileNotFoundError:
+            meta_path = None
+
+    if meta_path:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        if not lstm_path:
+            lstm_path = os.path.join(PARAM_DIR, meta.get("artifacts", {}).get("lstm", ""))
+
+    if not lstm_path:
+        raise SystemExit("Must provide --lstm or --meta with lstm path.")
+
+    if not os.path.isabs(lstm_path):
+        lstm_path = os.path.join(PARAM_DIR, lstm_path)
+
+    lstm_model = load_lstm(lstm_path)
+    viz = Visualizer(headless=args.headless)
+    print(f"Loaded LSTM from {lstm_path}. Headless={viz.headless}")
+    run(viz, lstm_model)
+
+
+if __name__ == "__main__":
+    main()

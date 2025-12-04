@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+*.bak
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Param artifacts (keep metadata JSON)
+param/*.pth
+param/*.pt
+param/*.ckpt
+# keep meta JSON
+!param/*.json
+
+# Torch / cache
+.cache/
+
+# Images / screenshots (optional)
+*.png
+*.jpg
+*.jpeg

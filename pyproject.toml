@@ -1,0 +1,23 @@
+[tool.copilot]
+# Note: comments are allowed in TOML, but bracket-only arrays are not.
+# Removed stray bracket block that broke parsing.
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "test"
+version = "0.1.0"
+description = "Project dependencies migrated from requirements.txt"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Your Name" }]
+keywords = ["pygame", "torch", "rl"]
+
+dependencies = [
+	"numpy>=1.24",
+	"pygame>=2.5.0",
+	"torch",
+]
