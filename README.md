@@ -31,11 +31,11 @@ brew install uv
 2) Create a virtual environment and install deps:
 
 ```bash
-# Create venv in .venv
-uv venv .venv
+# Create venv in
+uv venv
 
 # Install requirements into that venv
-uv pip install -r requirements.txt
+uv sync
 ```
 
 3) Run scripts with uv (auto-activates the venv):
@@ -45,7 +45,7 @@ uv pip install -r requirements.txt
 uv run train.py
 
 # Visualize (auto-picks latest metadata in param/ if --meta omitted)
-uv run visualize_models.py --mode both --headless
+uv run visualize_models.py 
 
 # Explicit metadata
 uv run visualize_models.py --meta param/training_meta_<timestamp>.json --mode both
