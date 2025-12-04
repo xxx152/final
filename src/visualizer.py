@@ -10,6 +10,12 @@ class Visualizer:
             headless = not bool(os.environ.get("DISPLAY"))
         self.headless = headless
 
+        # default toggles
+        self.show_client_dot = True
+        self.ai_assist_enabled = False  # AI assists movement when user idle
+        self.btn_ai_assist_rect = None
+        self.btn_client_dot_rect = None
+
         if self.headless:
             self.screen = None
             self.font = None
@@ -38,6 +44,13 @@ class Visualizer:
                 elif event.key == pygame.K_3: self.speed_mode = 3
                 elif event.key == pygame.K_4: self.speed_mode = 4
                 elif event.key == pygame.K_0: self.speed_mode = 0
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                # Toggle buttons if clicked
+                if self.btn_ai_assist_rect and self.btn_ai_assist_rect.collidepoint(mx, my):
+                    self.ai_assist_enabled = not self.ai_assist_enabled
+                elif self.btn_client_dot_rect and self.btn_client_dot_rect.collidepoint(mx, my):
+                    self.show_client_dot = not self.show_client_dot
 
     def wait_frame(self):
         if self.headless:
@@ -66,8 +79,11 @@ class Visualizer:
         if "RL" in phase_text or "Data" in phase_text:
             pygame.draw.circle(self.screen, (255, 100, 100), (world.ax*CELL+CELL//2, world.ay*CELL+CELL//2), CELL//3)
         else:
+            # Green: authoritative server agent position
             pygame.draw.circle(self.screen, (0, 180, 0), (world.ax*CELL+CELL//2, world.ay*CELL+CELL//2), CELL//3)
-            pygame.draw.circle(self.screen, (50, 150, 255), (world.cx*CELL+CELL//2, world.cy*CELL+CELL//2), CELL//4)
+            # Blue: client-side predicted/applied position (optional)
+            if self.show_client_dot:
+                pygame.draw.circle(self.screen, (50, 150, 255), (world.cx*CELL+CELL//2, world.cy*CELL+CELL//2), CELL//4)
 
         lines = [
             f"Phase: {phase_text} (Fixed RL)",
@@ -84,6 +100,29 @@ class Visualizer:
         latency_ms = (RTT_FRAMES / FPS) * 1000
         lat_text = self.big_font.render(f"Latency: {int(latency_ms)} ms", True, (255, 50, 50))
         self.screen.blit(lat_text, (SCREEN_W_BASE - 200, 10))
+
+        # Right-side control panel (for Play mode)
+        self.btn_ai_assist_rect = None
+        self.btn_client_dot_rect = None
+        if "Play" in phase_text:
+            panel_rect = pygame.Rect(SCREEN_W_BASE, 0, SCREEN_W - SCREEN_W_BASE, SCREEN_H)
+            self.screen.fill((10, 10, 10), rect=panel_rect)
+            bx, by = SCREEN_W_BASE + 20, 20
+            bw, bh = (SCREEN_W - SCREEN_W_BASE) - 40, 36
+            # AI Assist toggle
+            self.btn_ai_assist_rect = pygame.Rect(bx, by, bw, bh)
+            pygame.draw.rect(self.screen, (60, 60, 60), self.btn_ai_assist_rect)
+            label = f"AI Assist: {'ON' if self.ai_assist_enabled else 'OFF'}"
+            s = self.big_font.render(label, True, (255, 255, 255))
+            self.screen.blit(s, (bx + 10, by + 6))
+
+            # Client dot toggle
+            by2 = by + bh + 12
+            self.btn_client_dot_rect = pygame.Rect(bx, by2, bw, bh)
+            pygame.draw.rect(self.screen, (60, 60, 60), self.btn_client_dot_rect)
+            label2 = f"Client Dot (Blue): {'SHOW' if self.show_client_dot else 'HIDE'}"
+            s2 = self.big_font.render(label2, True, (255, 255, 255))
+            self.screen.blit(s2, (bx + 10, by2 + 6))
 
         pygame.display.flip()
 

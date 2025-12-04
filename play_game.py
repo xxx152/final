@@ -67,6 +67,15 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
                 if event.type == pygame.QUIT:
                     running = False
 
+        # Predict next action probabilities from recent states
+        seq = torch.tensor([state_hist[-SEQ_LEN:]], dtype=torch.float32).to(DEVICE)
+        with torch.no_grad():
+            probs = torch.softmax(lstm_model(seq), dim=1)[0].cpu().numpy()
+        top2 = probs.argsort()[-2:][::-1].tolist()
+        predicted_action = int(np.argmax(probs))
+        # Send prediction to client buffer with delay (for accuracy stats)
+        server_pred_buffer.append([CLIENT_DELAY, top2])
+
         # Keyboard input
         ua = None
         if not viz.headless:
@@ -80,6 +89,11 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
                     input_cooldown = MOVE_COOLDOWN
             else:
                 input_cooldown -= 1
+
+        # AI assist: if enabled and user idle, apply predicted action
+        if ua is None and input_cooldown <= 0 and viz.ai_assist_enabled:
+            ua = predicted_action
+            input_cooldown = MOVE_COOLDOWN
 
         curr_act = ua if ua is not None else NOOP
         past_actions.append(curr_act)
@@ -115,17 +129,11 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
             if act != NOOP:
                 world.step(act)
 
-        # Encode and predict next action probabilities
+        # Encode latest state
         curr_enc = encode_state(world, past_actions)
         state_hist.append(curr_enc)
         if len(state_hist) > 400:
             state_hist.pop(0)
-
-        seq = torch.tensor([state_hist[-SEQ_LEN:]], dtype=torch.float32).to(DEVICE)
-        with torch.no_grad():
-            probs = torch.softmax(lstm_model(seq), dim=1)[0].cpu().numpy()
-        top2 = probs.argsort()[-2:][::-1].tolist()
-        server_pred_buffer.append([CLIENT_DELAY, top2])
 
         # Periodically re-sync client avatar to authoritative server pos
         if frame % 300 == 0:
@@ -133,7 +141,8 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
 
         acc = (correct_preds / total_preds * 100) if total_preds else 0.0
         info = f"Acc={acc:.1f}% Frame={frame}"
-        extra = f"Top2={top2} Match={match} Score={world.score}"
+        legend = "Legend: Green=Server (authoritative), Blue=Client (predicted/applied)"
+        extra = f"Top2={top2} Match={match} Score={world.score} | {legend}"
         viz.draw(world, "Play (Human + LSTM Predict)", info, extra)
         if viz.speed_mode != 4 and not viz.headless:
             viz.wait_frame()
@@ -146,6 +155,8 @@ def main():
     parser.add_argument("--meta", type=str, default=None, help="Metadata JSON (auto-lstm path). If omitted, latest meta in param/ will be used if present.")
     parser.add_argument("--lstm", type=str, default=None, help="Path to lstm model .pth")
     parser.add_argument("--headless", action="store_true", help="Force headless (no window).")
+    parser.add_argument("--hide-client-dot", action="store_true", help="Hide the blue client dot in visualization.")
+    parser.add_argument("--fast", action="store_true", help="AI visualization fast mode (no frame wait).")
     args = parser.parse_args()
 
     lstm_path = args.lstm
@@ -176,6 +187,11 @@ def main():
 
     lstm_model = load_lstm(lstm_path)
     viz = Visualizer(headless=args.headless)
+    # Apply visualization toggles
+    if args.hide_client_dot:
+        viz.show_client_dot = False
+    if args.fast and not viz.headless:
+        viz.speed_mode = 4
     print(f"Loaded LSTM from {lstm_path}. Headless={viz.headless}")
     run(viz, lstm_model)
 

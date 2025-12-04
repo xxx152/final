@@ -72,3 +72,25 @@ Default training parameters (episodes, steps, learning rate, etc.) are defined i
 - RL model: `param/rl_net_<timestamp>.pth`
 - LSTM model: `param/lstm_net_<timestamp>.pth`
 - Metadata: `param/training_meta_<timestamp>.json`
+
+## Standalone binary (no venv)
+
+You can build a single-file binary for `play_game` on Linux using PyInstaller.
+
+1) Build the binary (uses system Python; installs PyInstaller to user site if missing):
+
+```bash
+bash scripts/build_play_game.sh
+```
+
+2) Run the binary directly without a venv:
+
+```bash
+./dist/play_game --meta param/training_meta_<timestamp>.json
+```
+
+Optional flags:
+- `--hide-client-dot` to hide the blue client dot
+- `--fast` to skip per-frame waiting (max FPS visualization)
+- `--headless` to skip drawing entirely
+

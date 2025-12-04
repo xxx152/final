@@ -1,3 +1,14 @@
+```pip-requirements
+# For CUDA-enabled PyTorch (example: CUDA 11.8). Uncomment the --extra-index-url line
+# and the matching torch package below to install a CUDA build via PyTorch's wheel index.
+# You can change `cu118` to the CUDA version that matches your system (cu117, cu121, etc.).
+
+# Example for CUDA 11.8:
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.2.0+cu118
+
+# If you prefer the CPU-only build from PyPI, comment out the two lines above and use:
 numpy>=1.24
 pygame>=2.5.0
 torch
+```
