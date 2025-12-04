@@ -19,5 +19,5 @@ keywords = ["pygame", "torch", "rl"]
 dependencies = [
 	"numpy>=1.24",
 	"pygame>=2.5.0",
-	"torch==2.2.0+cu118", # Example CUDA-enabled build; ensure you install with PyTorch's CUDA wheel index matching your CUDA
+	"torch",
 ]

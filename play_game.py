@@ -77,18 +77,31 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
         server_pred_buffer.append([CLIENT_DELAY, top2])
 
         # Keyboard input
+        # Keyboard input with continuous movement while a key is held
         ua = None
         if not viz.headless:
             keys = pygame.key.get_pressed()
+            desired_dir = None
+            if keys[pygame.K_UP]:
+                desired_dir = 0
+            elif keys[pygame.K_DOWN]:
+                desired_dir = 1
+            elif keys[pygame.K_LEFT]:
+                desired_dir = 2
+            elif keys[pygame.K_RIGHT]:
+                desired_dir = 3
+
             if input_cooldown <= 0:
-                if keys[pygame.K_UP]: ua = 0
-                elif keys[pygame.K_DOWN]: ua = 1
-                elif keys[pygame.K_LEFT]: ua = 2
-                elif keys[pygame.K_RIGHT]: ua = 3
-                if ua is not None:
+                # If a direction key is currently held, move now
+                if desired_dir is not None:
+                    ua = desired_dir
                     input_cooldown = MOVE_COOLDOWN
             else:
+                # Count down the cooldown; when it reaches 0 and the key is still held, repeat the move
                 input_cooldown -= 1
+                if input_cooldown <= 0 and desired_dir is not None:
+                    ua = desired_dir
+                    input_cooldown = MOVE_COOLDOWN
 
         # AI assist: if enabled and user idle, apply predicted action
         if ua is None and input_cooldown <= 0 and viz.ai_assist_enabled:

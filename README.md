@@ -94,3 +94,8 @@ Optional flags:
 - `--fast` to skip per-frame waiting (max FPS visualization)
 - `--headless` to skip drawing entirely
 
+Notes:
+- If you see "No module named 'numpy'" when running the binary, rebuild using the provided script; it bundles numpy/pygame/torch with PyInstaller.
+- The binary requires a graphical session (DISPLAY) for visualization; use `--headless` to skip drawing.
+- Building Windows `.exe` should be done on Windows (PyInstaller builds are OS-specific).
+
