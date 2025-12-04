@@ -24,14 +24,30 @@ from .replay import ReplayBuffer
 
 
 def train_rl_agent(viz):
+
+    # Set random seeds for reproducibility
+    import random, numpy as np, torch
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    try:
+        torch.cuda.manual_seed_all(42)
+    except Exception:
+        pass
+
+    # Optionally use static map for debugging
+    STATIC_MAP = True  # Set to False to use random maps
     world = GridWorld()
+    if STATIC_MAP:
+        world.randomize_obstacles = lambda: None  # Disable map randomization
+
     q_net = QNetwork(INPUT_DIM, NUM_ACTIONS).to(DEVICE)
     target_net = QNetwork(INPUT_DIM, NUM_ACTIONS).to(DEVICE)
     target_net.load_state_dict(q_net.state_dict())
     target_net.eval()
 
-    optimizer = optim.Adam(q_net.parameters(), lr=1e-4)
-    replay_buffer = ReplayBuffer(150000)
+    optimizer = optim.Adam(q_net.parameters(), lr=5e-5)
+    replay_buffer = ReplayBuffer(300000)
 
     score_history = []
     steps_done = 0
@@ -55,7 +71,7 @@ def train_rl_agent(viz):
             warm_state = encode_state(world, [])
 
     for ep in range(RL_EPISODES):
-        if ep % MAP_CHANGE_FREQ == 0 and ep > 0:
+        if ep % MAP_CHANGE_FREQ == 0 and ep > 0 and not STATIC_MAP:
             world.randomize_obstacles()
         world.reset()
         past_actions = []
@@ -63,7 +79,11 @@ def train_rl_agent(viz):
 
         for step in range(RL_STEPS_PER_EP):
             steps_done += 1
-            epsilon = 0.05 + 0.95 * math.exp(-steps_done / 800000)
+            # Epsilon decay: linear schedule with min epsilon 0.1
+            EPS_START = 1.0
+            EPS_END = 0.1
+            EPS_DECAY = 500000  # decay steps
+            epsilon = max(EPS_END, EPS_START - steps_done / EPS_DECAY)
             if random.random() < epsilon:
                 action = random.randint(0, NUM_ACTIONS - 1)
             else:
@@ -100,7 +120,7 @@ def train_rl_agent(viz):
                 torch.nn.utils.clip_grad_norm_(q_net.parameters(), 1.0)
                 optimizer.step()
 
-            if steps_done % 1000 == 0:
+            if steps_done % 3000 == 0:
                 target_net.load_state_dict(q_net.state_dict())
 
             if viz and getattr(viz, "speed_mode", 0) != 0:
