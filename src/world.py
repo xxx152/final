@@ -15,7 +15,7 @@ class GridWorld:
 
     def randomize_obstacles(self):
         self.obstacles = []
-        num_obs = int((self.w * self.h) * 0.15)
+        num_obs = int((self.w * self.h) * 0.05)
         count = 0
         attempts = 0
         while count < num_obs and attempts < 1000:

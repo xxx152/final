@@ -1,0 +1,31 @@
+{
+  "timestamp": 1765278295,
+  "device": "cpu",
+  "grid": {
+    "w": 16,
+    "h": 12
+  },
+  "cell": 48,
+  "num_rewards": 5,
+  "rtt_frames": 300,
+  "fps": 60,
+  "model": {
+    "input_dim": 63,
+    "action_space": 5,
+    "action_history": 3,
+    "seq_len": 8
+  },
+  "training": {
+    "rl_episodes": 10000,
+    "rl_steps_per_episode": 720,
+    "lstm_epochs": 50,
+    "replay_capacity": 200000,
+    "batch_size": 256,
+    "gamma": 0.99,
+    "lr": 0.0002
+  },
+  "artifacts": {
+    "rl": "rl_net_1765278295.pth",
+    "lstm": "lstm_net_1765278295.pth"
+  }
+}

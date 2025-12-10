@@ -24,66 +24,33 @@ from .replay import ReplayBuffer
 
 
 def train_rl_agent(viz):
-
-    # Set random seeds for reproducibility
-    import random, numpy as np, torch
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
-    try:
-        torch.cuda.manual_seed_all(42)
-    except Exception:
-        pass
-
-    # Optionally use static map for debugging
-    STATIC_MAP = True  # Set to False to use random maps
     world = GridWorld()
-    if STATIC_MAP:
-        world.randomize_obstacles = lambda: None  # Disable map randomization
-
     q_net = QNetwork(INPUT_DIM, NUM_ACTIONS).to(DEVICE)
     target_net = QNetwork(INPUT_DIM, NUM_ACTIONS).to(DEVICE)
     target_net.load_state_dict(q_net.state_dict())
     target_net.eval()
 
-    optimizer = optim.Adam(q_net.parameters(), lr=5e-5)
-    replay_buffer = ReplayBuffer(300000)
+    optimizer = optim.Adam(q_net.parameters(), lr=0.0002)
+    replay_buffer = ReplayBuffer(200000)
+    steps_history = []  # 紀錄每代的步數
 
-    score_history = []
     steps_done = 0
-    # Early stopping: stop if no improvement for this many consecutive episodes
-    best_score = -float('inf')
-    no_improve_epochs = 0
-    EARLY_STOP_PATIENCE = 6
-
-    # Warm-up
-    print("Warm-up replay buffer...")
-    world.reset()
-    warm_state = encode_state(world, [])
-    for _ in range(15000):
-        action = random.randint(0, NUM_ACTIONS - 1)
-        reward, _ = world.step(action)
-        next_state = encode_state(world, [action])
-        replay_buffer.push(warm_state, action, reward, next_state, False)
-        warm_state = next_state
-        if random.random() < 0.05:
-            world.reset()
-            warm_state = encode_state(world, [])
+    max_steps_per_ep = 720  # 每代最多步數，避免無限循環
 
     for ep in range(RL_EPISODES):
-        if ep % MAP_CHANGE_FREQ == 0 and ep > 0 and not STATIC_MAP:
-            world.randomize_obstacles()
+        world.randomize_obstacles()   # 每 ep 都換新圖
         world.reset()
         past_actions = []
         state = encode_state(world, past_actions)
+        
+        initial_score = world.score  # 記錄初始分數
+        coins_collected = 0         # 本代已吃到的金幣數
 
-        for step in range(RL_STEPS_PER_EP):
+        for step in range(max_steps_per_ep):
             steps_done += 1
-            # Epsilon decay: linear schedule with min epsilon 0.1
-            EPS_START = 1.0
-            EPS_END = 0.1
-            EPS_DECAY = 500000  # decay steps
-            epsilon = max(EPS_END, EPS_START - steps_done / EPS_DECAY)
+
+            epsilon = 0.05 + 0.95 * math.exp(-steps_done / 1_000_000)
+
             if random.random() < epsilon:
                 action = random.randint(0, NUM_ACTIONS - 1)
             else:
@@ -91,61 +58,68 @@ def train_rl_agent(viz):
                     action = q_net(torch.FloatTensor(state).unsqueeze(0).to(DEVICE)).argmax().item()
 
             base_reward, _ = world.step(action)
-            reward = base_reward
 
+            # 檢查是否吃到金幣（score 增加表示吃到一枚）
+            current_score = world.score
+            new_coins = max(0, current_score - initial_score - coins_collected)
+            if new_coins > 0:
+                coins_collected += new_coins
+
+            # 重新設計獎勵：
+            # - 每步小懲罰，鼓勵更少步數
+            # - 吃到金幣給小獎勵
+            # - 第三枚金幣（達成目標）給與步數成反比的大獎勵
+            reward = -0.01  # 每步小懲罰
+            if new_coins > 0 and coins_collected < 3:
+                reward += 1.0  # 中途吃到第1或第2枚的小獎勵
+            if coins_collected >= 3:
+                reward += 50.0 - step * 0.1  # 達成目標的大獎勵（步數越少越好）
+            
             past_actions.append(action)
-            if len(past_actions) > ACTION_HISTORY:
+            if len(past_actions) > 6:
                 past_actions.pop(0)
             next_state = encode_state(world, past_actions)
 
-            replay_buffer.push(state, action, reward, next_state, step == RL_STEPS_PER_EP-1)
+            done = coins_collected >= 3  # 吃到三個金幣就結束（不重生）
+            replay_buffer.push(state, action, reward, next_state, done)
             state = next_state
 
-            if len(replay_buffer) >= BATCH_SIZE:
-                transitions = replay_buffer.sample(BATCH_SIZE)
-                batch_state = torch.FloatTensor(np.array(transitions.state)).to(DEVICE)
-                batch_action = torch.LongTensor(transitions.action).unsqueeze(1).to(DEVICE)
-                batch_reward = torch.FloatTensor(transitions.reward).unsqueeze(1).to(DEVICE)
-                batch_next = torch.FloatTensor(np.array(transitions.next_state)).to(DEVICE)
-                batch_done = torch.FloatTensor(transitions.done).unsqueeze(1).to(DEVICE)
+            if len(replay_buffer) >= 256:
+                batch = replay_buffer.sample(256)
+                state_batch = torch.FloatTensor(np.array(batch.state)).to(DEVICE)
+                action_batch = torch.LongTensor(batch.action).unsqueeze(1).to(DEVICE)
+                reward_batch = torch.FloatTensor(batch.reward).unsqueeze(1).to(DEVICE)
+                next_state_batch = torch.FloatTensor(np.array(batch.next_state)).to(DEVICE)
+                done_batch = torch.FloatTensor(batch.done).unsqueeze(1).to(DEVICE)
 
-                current_q = q_net(batch_state).gather(1, batch_action)
+                current_q = q_net(state_batch).gather(1, action_batch)
+
                 with torch.no_grad():
-                    next_actions = q_net(batch_next).argmax(1).unsqueeze(1)
-                    next_q = target_net(batch_next).gather(1, next_actions)
-                    target_q = batch_reward + GAMMA * next_q * (1.0 - batch_done)
-                loss = nn.functional.mse_loss(current_q, target_q)
+                    next_q = target_net(next_state_batch).max(1)[0].unsqueeze(1)
+                    target_q = reward_batch + 0.99 * next_q * (1 - done_batch)  # done時不計算未來獎勵
+
+                loss = nn.MSELoss()(current_q, target_q)
+
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(q_net.parameters(), 1.0)
                 optimizer.step()
 
-            if steps_done % 3000 == 0:
+            if steps_done % 1000 == 0:
                 target_net.load_state_dict(q_net.state_dict())
-
-            if viz and getattr(viz, "speed_mode", 0) != 0:
-                viz.draw_rl_status(world, ep, score_history, RL_EPISODES, epsilon, MAP_CHANGE_FREQ, reward)
-                if viz.speed_mode != 4:
-                    viz.wait_frame()
-
-        score_history.append(world.score)
-
-        if (ep + 1) % 50 == 0:
-                    # Early-stop check: if no improvement for EARLY_STOP_PATIENCE consecutive episodes, break
-            if np.mean(score_history[-50:]) > best_score:
-                best_score = np.mean(score_history[-50:])
-                no_improve_epochs = 0
-            else:
-                no_improve_epochs += 1
-
-            if no_improve_epochs >= EARLY_STOP_PATIENCE:
-                print(f"No improvement for {no_improve_epochs} episodes, stopping early at episode {ep+1}.")
+            
+            # 吃到三個金幣就結束這一代
+            if coins_collected >= 3:
                 break
-            print(f"Ep {ep+1} Score: {world.score}  Avg50: {np.mean(score_history[-50:]):.1f}")
+
+        steps_history.append(step + 1)  # 記錄本代用了幾步
         
+        if (ep + 1) % 50 == 0:
+            avg_steps = np.mean(steps_history[-50:])
+            print(f"Ep {ep+1} Steps: {step+1}  Avg50: {avg_steps:.1f}  Coins: {coins_collected}")
+        
+        # 如果連續很多代都沒吃到，可能需要調整
 
     return q_net
-
 
 def train_lstm_pipeline(viz, rl_agent):
     world = GridWorld()
