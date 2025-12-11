@@ -39,7 +39,3 @@ param/*.ckpt
 # Torch / cache
 .cache/
 
-# Images / screenshots (optional)
-*.png
-*.jpg
-*.jpeg
