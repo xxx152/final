@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765278295,
+  "timestamp": 1765358049,
   "device": "cpu",
   "grid": {
     "w": 16,
@@ -16,7 +16,7 @@
     "seq_len": 8
   },
   "training": {
-    "rl_episodes": 10000,
+    "rl_episodes": 3000,
     "rl_steps_per_episode": 720,
     "lstm_epochs": 50,
     "replay_capacity": 200000,
@@ -25,7 +25,7 @@
     "lr": 0.0002
   },
   "artifacts": {
-    "rl": "rl_net_1765278295.pth",
-    "lstm": "lstm_net_1765278295.pth"
+    "rl": "rl_net_1765358049.pth",
+    "lstm": "lstm_net_1765358049.pth"
   }
 }

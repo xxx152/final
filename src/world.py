@@ -13,9 +13,13 @@ class GridWorld:
         self.score = 0
         self.randomize_obstacles()
 
-    def randomize_obstacles(self):
+    def randomize_obstacles(self, density: float = 0.04):
+        """Randomize obstacles with a given density (0.0 ~ 0.2 typical).
+        Set density=0.0 to start with no obstacles.
+        """
         self.obstacles = []
-        num_obs = int((self.w * self.h) * 0.05)
+        density = max(0.0, min(density, 0.5))
+        num_obs = int((self.w * self.h) * density)
         count = 0
         attempts = 0
         while count < num_obs and attempts < 1000:

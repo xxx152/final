@@ -33,12 +33,18 @@ def train_rl_agent(viz):
     optimizer = optim.Adam(q_net.parameters(), lr=0.0002)
     replay_buffer = ReplayBuffer(200000)
     steps_history = []  # 紀錄每代的步數
+    loss_history = []   # 紀錄訓練loss
 
     steps_done = 0
     max_steps_per_ep = 720  # 每代最多步數，避免無限循環
 
+    warmup_episodes = max(1, RL_EPISODES // 3)  # 前1/3 逐步加障礙
     for ep in range(RL_EPISODES):
-        world.randomize_obstacles()   # 每 ep 都換新圖
+        # 障礙密度從 0 線性提升到原本的 0.05
+        target_density = 0.04
+        ramp = min(1.0, ep / warmup_episodes)
+        density = target_density * ramp
+        world.randomize_obstacles(density)   # 每 ep 都換新圖（受密度控制）
         world.reset()
         past_actions = []
         state = encode_state(world, past_actions)
@@ -103,6 +109,9 @@ def train_rl_agent(viz):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                
+                # 記錄loss
+                loss_history.append(loss.item())
 
             if steps_done % 1000 == 0:
                 target_net.load_state_dict(q_net.state_dict())
@@ -118,6 +127,29 @@ def train_rl_agent(viz):
             print(f"Ep {ep+1} Steps: {step+1}  Avg50: {avg_steps:.1f}  Coins: {coins_collected}")
         
         # 如果連續很多代都沒吃到，可能需要調整
+
+    # 訓練完成，畫loss圖並存檔
+    import matplotlib
+    matplotlib.use('Agg')  # 無GUI後端
+    import matplotlib.pyplot as plt
+    
+    if loss_history:
+        plt.figure(figsize=(10, 6))
+        plt.plot(loss_history, alpha=0.3, label='Raw Loss')
+        # 計算移動平均讓曲線更平滑
+        window = min(100, len(loss_history) // 10)
+        if window > 1:
+            smoothed = np.convolve(loss_history, np.ones(window)/window, mode='valid')
+            plt.plot(range(window-1, len(loss_history)), smoothed, linewidth=2, label=f'MA-{window}')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Loss')
+        plt.title('RL Agent Training Loss')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig('rl_training_loss.png', dpi=150)
+        print(f"\n✓ Loss圖已存至: rl_training_loss.png")
+        plt.close()
 
     return q_net
 
@@ -187,5 +219,22 @@ def train_lstm_pipeline(viz, rl_agent):
             viz.draw_loss_graph(epoch, avg_loss, loss_history, LSTM_TRAIN_EPOCHS)
             if viz.speed_mode != 4:
                 viz.wait_frame()
+
+    # LSTM訓練完成，畫loss圖並存檔
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    
+    if loss_history:
+        plt.figure(figsize=(10, 6))
+        plt.plot(loss_history, linewidth=2, marker='o', markersize=3)
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('LSTM Predictor Training Loss')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig('lstm_training_loss.png', dpi=150)
+        print(f"\n✓ LSTM Loss圖已存至: lstm_training_loss.png")
+        plt.close()
 
     return lstm
