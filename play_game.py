@@ -122,11 +122,9 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
                     ua = desired_dir
                     input_cooldown = MOVE_COOLDOWN
 
-        # AI assist: if enabled and user idle, apply predicted action
-        if ua is None and input_cooldown <= 0 and viz.ai_assist_enabled:
-            ua = predicted_action
-            input_cooldown = MOVE_COOLDOWN
-
+        # AI assist: only shows prediction, does not auto-execute
+        # (user must press keys to move)
+        
         curr_act = ua if ua is not None else NOOP
         past_actions.append(curr_act)
         if len(past_actions) > ACTION_HISTORY:
@@ -141,7 +139,7 @@ def run(viz: Visualizer, lstm_model: LSTMPredictor):
         latest_pred = arrived_preds[-1] if arrived_preds else None
 
         match = False
-        if latest_pred and curr_act != NOOP:
+        if latest_pred and curr_act != NOOP and viz.ai_assist_enabled:
             total_preds += 1
             if curr_act in latest_pred[1]:
                 correct_preds += 1
@@ -220,6 +218,8 @@ def main():
     lstm_model = load_lstm(lstm_path)
     viz = Visualizer(headless=args.headless)
     # Apply visualization toggles
+    viz.ai_assist_enabled = True  # 預設開啟AI幫助
+    viz.show_client_dot = False   # 預設關閉藍色點
     if args.hide_client_dot:
         viz.show_client_dot = False
     if args.fast and not viz.headless:
